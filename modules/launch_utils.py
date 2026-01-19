@@ -40,7 +40,7 @@ def check_python_version():
     if is_windows:
         supported_minors = [10]
     else:
-        supported_minors = [7, 8, 9, 10, 11]
+        supported_minors = [7, 8, 9, 10, 11, 12]
 
     if not (major == 3 and minor in supported_minors):
         import modules.errors
@@ -316,8 +316,36 @@ def requirements_met(requirements_file):
 
 
 def prepare_environment():
-    torch_index_url = os.environ.get('TORCH_INDEX_URL', "https://download.pytorch.org/whl/cu121")
-    torch_command = os.environ.get('TORCH_COMMAND', f"pip install torch==2.1.2 torchvision==0.16.2 --extra-index-url {torch_index_url}")
+    # Check for RTX 50 series (Blackwell architecture, compute capability 12.0)
+    # RTX 50 series requires PyTorch 2.7.0+ with CUDA 12.8+
+    is_rtx50_series = False
+    try:
+        import subprocess
+        result = subprocess.run(['nvidia-smi', '--query-gpu=compute_cap', '--format=csv,noheader,nounits'], 
+                              capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            compute_caps = result.stdout.strip().split('\n')
+            # Check if any GPU has compute capability 12.0 (RTX 50 series)
+            is_rtx50_series = any(cap.strip() == '12.0' for cap in compute_caps if cap.strip())
+    except Exception:
+        pass
+    
+    # Determine torch version based on Python version and GPU
+    major = sys.version_info.major
+    minor = sys.version_info.minor
+    
+    if is_rtx50_series:
+        # RTX 50 series (Blackwell) requires PyTorch 2.7.0+ with CUDA 12.8
+        torch_index_url = os.environ.get('TORCH_INDEX_URL', "https://download.pytorch.org/whl/cu128")
+        torch_command = os.environ.get('TORCH_COMMAND', f"pip install torch==2.7.0+cu128 torchvision==0.22.0+cu128 --extra-index-url {torch_index_url}")
+    elif major == 3 and minor >= 12:
+        # Python 3.12+ requires PyTorch 2.2.0+ (2.1.2 doesn't support Python 3.12)
+        torch_index_url = os.environ.get('TORCH_INDEX_URL', "https://download.pytorch.org/whl/cu121")
+        torch_command = os.environ.get('TORCH_COMMAND', f"pip install torch==2.2.0+cu121 torchvision==0.17.0+cu121 --extra-index-url {torch_index_url}")
+    else:
+        # Default for Python 3.7-3.11
+        torch_index_url = os.environ.get('TORCH_INDEX_URL', "https://download.pytorch.org/whl/cu121")
+        torch_command = os.environ.get('TORCH_COMMAND', f"pip install torch==2.1.2 torchvision==0.16.2 --extra-index-url {torch_index_url}")
     if args.use_ipex:
         if platform.system() == "Windows":
             # The "Nuullll/intel-extension-for-pytorch" wheels were built from IPEX source for Intel Arc GPU: https://github.com/intel/intel-extension-for-pytorch/tree/xpu-main
@@ -346,16 +374,20 @@ def prepare_environment():
     openclip_package = os.environ.get('OPENCLIP_PACKAGE', "https://github.com/mlfoundations/open_clip/archive/bb6e834e9c70d9c27d0dc3ecedeebeaeb1ffad6b.zip")
 
     assets_repo = os.environ.get('ASSETS_REPO', "https://github.com/AUTOMATIC1111/stable-diffusion-webui-assets.git")
-    stable_diffusion_repo = os.environ.get('STABLE_DIFFUSION_REPO', "https://github.com/Stability-AI/stablediffusion.git")
+    # Use CompVis/stable-diffusion as default since Stability-AI/stablediffusion is no longer available
+    stable_diffusion_repo = os.environ.get('STABLE_DIFFUSION_REPO', "https://github.com/CompVis/stable-diffusion.git")
     stable_diffusion_xl_repo = os.environ.get('STABLE_DIFFUSION_XL_REPO', "https://github.com/Stability-AI/generative-models.git")
     k_diffusion_repo = os.environ.get('K_DIFFUSION_REPO', 'https://github.com/crowsonkb/k-diffusion.git')
     blip_repo = os.environ.get('BLIP_REPO', 'https://github.com/salesforce/BLIP.git')
+    taming_repo = os.environ.get('TAMING_REPO', 'https://github.com/CompVis/taming-transformers.git')
 
     assets_commit_hash = os.environ.get('ASSETS_COMMIT_HASH', "6f7db241d2f8ba7457bac5ca9753331f0c266917")
-    stable_diffusion_commit_hash = os.environ.get('STABLE_DIFFUSION_COMMIT_HASH', "cf1d67a6fd5ea1aa600c4df58e5b47da45f6bdbf")
+    # CompVis/stable-diffusion doesn't need a specific commit hash, use None to get latest main
+    stable_diffusion_commit_hash = os.environ.get('STABLE_DIFFUSION_COMMIT_HASH', None)
     stable_diffusion_xl_commit_hash = os.environ.get('STABLE_DIFFUSION_XL_COMMIT_HASH', "45c443b316737a4ab6e40413d7794a7f5657c19f")
     k_diffusion_commit_hash = os.environ.get('K_DIFFUSION_COMMIT_HASH', "ab527a9a6d347f364e3d185ba6d714e22d80cb3c")
     blip_commit_hash = os.environ.get('BLIP_COMMIT_HASH', "48211a1594f1321b00f14c9f7a5b4813144b2fb9")
+    taming_commit_hash = os.environ.get('TAMING_COMMIT_HASH', "24268930bf1dce879235a7fddd0b2355b84d7ea6")
 
     try:
         # the existence of this file is a signal to webui.sh/bat that webui needs to be restarted when it stops execution
@@ -409,10 +441,23 @@ def prepare_environment():
     os.makedirs(os.path.join(script_path, dir_repos), exist_ok=True)
 
     git_clone(assets_repo, repo_dir('stable-diffusion-webui-assets'), "assets", assets_commit_hash)
-    git_clone(stable_diffusion_repo, repo_dir('stable-diffusion-stability-ai'), "Stable Diffusion", stable_diffusion_commit_hash)
+    
+    # Try to clone stable diffusion repo, with fallback to CompVis if Stability-AI fails
+    try:
+        git_clone(stable_diffusion_repo, repo_dir('stable-diffusion-stability-ai'), "Stable Diffusion", stable_diffusion_commit_hash)
+    except RuntimeError:
+        # Fallback to CompVis/stable-diffusion if Stability-AI repo is unavailable
+        if "Stability-AI" in stable_diffusion_repo:
+            print("Warning: Stability-AI/stablediffusion repository not available, trying CompVis/stable-diffusion as fallback...")
+            fallback_repo = "https://github.com/CompVis/stable-diffusion.git"
+            git_clone(fallback_repo, repo_dir('stable-diffusion-stability-ai'), "Stable Diffusion (CompVis)", None)
+        else:
+            raise
+    
     git_clone(stable_diffusion_xl_repo, repo_dir('generative-models'), "Stable Diffusion XL", stable_diffusion_xl_commit_hash)
     git_clone(k_diffusion_repo, repo_dir('k-diffusion'), "K-diffusion", k_diffusion_commit_hash)
     git_clone(blip_repo, repo_dir('BLIP'), "BLIP", blip_commit_hash)
+    git_clone(taming_repo, repo_dir('taming-transformers'), "Taming Transformers", taming_commit_hash)
 
     startup_timer.record("clone repositores")
 

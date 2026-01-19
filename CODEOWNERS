@@ -1,5 +1,10 @@
 *       @AUTOMATIC1111
 
+# RTX 50 series (Blackwell) GPU support
+modules/launch_utils.py       @AUTOMATIC1111 @JayXCoder
+webui.sh                      @AUTOMATIC1111 @JayXCoder
+SETUP.md                      @AUTOMATIC1111 @JayXCoder
+
 # if you were managing a localization and were removed from this file, this is because
 # the intended way to do localizations now is via extensions. See:
 # https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/Developing-extensions

@@ -314,11 +314,86 @@ def read_state_dict(checkpoint_file, print_global_state=False, map_location=None
     if extension.lower() == ".safetensors":
         device = map_location or shared.weight_load_location or devices.get_optimal_device_name()
 
-        if not shared.opts.disable_mmap_load_safetensors:
-            pl_sd = safetensors.torch.load_file(checkpoint_file, device=device)
-        else:
-            pl_sd = safetensors.torch.load(open(checkpoint_file, 'rb').read())
-            pl_sd = {k: v.to(device) for k, v in pl_sd.items()}
+        try:
+            if not shared.opts.disable_mmap_load_safetensors:
+                pl_sd = safetensors.torch.load_file(checkpoint_file, device=device)
+            else:
+                with open(checkpoint_file, 'rb') as f:
+                    pl_sd = safetensors.torch.load(f.read())
+                pl_sd = {k: v.to(device) for k, v in pl_sd.items()}
+        except Exception as e:
+            error_str = str(e)
+            error_type = type(e).__name__
+            
+            # Check if file exists and get its size
+            if os.path.exists(checkpoint_file):
+                file_size = os.path.getsize(checkpoint_file)
+                file_size_mb = file_size / (1024 * 1024)
+                error_msg = f"Error loading safetensors file '{checkpoint_file}': {error_type}: {error_str}\n"
+                error_msg += f"File size: {file_size_mb:.2f} MB ({file_size:,} bytes)\n"
+                
+                # Check if file might be corrupted (too small)
+                if file_size < 1024 * 1024:  # Less than 1MB is suspicious for a model file
+                    error_msg += "WARNING: File size is very small. The file may be corrupted or incompletely downloaded.\n"
+                
+                # Try alternative loading method as fallback for HeaderTooLarge errors
+                is_header_error = ("HeaderTooLarge" in error_str or 
+                                 "deserializing header" in error_str.lower() or
+                                 "HeaderTooLarge" in error_type)
+                
+                if is_header_error:
+                    print(f"\n{'='*60}")
+                    print(f"⚠️  HeaderTooLarge error detected!")
+                    print(f"   File: {checkpoint_file}")
+                    print(f"   Size: {file_size_mb:.2f} MB")
+                    print(f"   Error: {error_type}: {error_str}")
+                    print(f"{'='*60}")
+                    print("Attempting fallback loading method...")
+                    try:
+                        # Try loading without mmap (read entire file into memory)
+                        if not shared.opts.disable_mmap_load_safetensors:
+                            print("   → Trying to load without memory mapping (full file read)...")
+                            with open(checkpoint_file, 'rb') as f:
+                                file_data = f.read()
+                            print(f"   → File read into memory ({len(file_data) / (1024*1024):.2f} MB)")
+                            pl_sd = safetensors.torch.load(file_data)
+                            pl_sd = {k: v.to(device) for k, v in pl_sd.items()}
+                            print("   ✓ Successfully loaded using fallback method (non-mmap)")
+                        else:
+                            # Try with mmap if it was disabled
+                            print("   → Trying to load with memory mapping...")
+                            pl_sd = safetensors.torch.load_file(checkpoint_file, device=device)
+                            print("   ✓ Successfully loaded using fallback method (mmap)")
+                    except Exception as e2:
+                        error_msg += f"\n⚠️  Fallback method also failed: {e2}\n"
+                        error_msg += "\n📋 Diagnostic information:\n"
+                        error_msg += f"   File: {checkpoint_file}\n"
+                        error_msg += f"   Size: {file_size_mb:.2f} MB\n"
+                        error_msg += "\n💡 Possible solutions:\n"
+                        error_msg += "   1. Run diagnostic: python check_safetensors.py <file>\n"
+                        error_msg += "   2. Re-download the model file from the original source\n"
+                        error_msg += "   3. Check if the file download was interrupted\n"
+                        error_msg += "   4. Verify the file size matches the expected size\n"
+                        error_msg += "   5. Try using a .ckpt version of the model if available\n"
+                        
+                        if "HeaderTooLarge" in str(e) or "HeaderTooLarge" in str(e2):
+                            error_msg += "   6. The file header is too large - this usually indicates file corruption\n"
+                            error_msg += "   7. The file may be incomplete or truncated\n"
+                        
+                        print(error_msg)
+                        errors.report(error_msg, exc_info=True)
+                        raise
+                else:
+                    error_msg += "\nPossible solutions:\n"
+                    error_msg += "1. Re-download the model file from the original source\n"
+                    error_msg += "2. Check if the file download was interrupted\n"
+                    error_msg += "3. Verify the file is actually a safetensors file (not corrupted)\n"
+                    error_msg += "4. Try using a .ckpt version of the model if available\n"
+                    errors.report(error_msg, exc_info=True)
+                    raise
+            else:
+                errors.report(f"Safetensors file not found: {checkpoint_file}", exc_info=True)
+                raise
     else:
         pl_sd = torch.load(checkpoint_file, map_location=map_location or shared.weight_load_location)
 

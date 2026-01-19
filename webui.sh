@@ -163,6 +163,24 @@ case "$gpu_info" in
     *)
     ;;
 esac
+# Check for RTX 50 series (Blackwell architecture, compute capability 12.0)
+# RTX 50 series requires PyTorch 2.7.0+ with CUDA 12.8+
+if echo "$gpu_info" | grep -q "NVIDIA" && [[ -z "${TORCH_COMMAND}" ]]
+then
+    if command -v nvidia-smi &> /dev/null
+    then
+        compute_cap=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader,nounits 2>/dev/null | head -n1 | tr -d ' ')
+        if [[ "$compute_cap" == "12.0" ]]
+        then
+            printf "\n%s\n" "${delimiter}"
+            printf "Detected RTX 50 series GPU (Blackwell architecture). Using PyTorch 2.7.0+ with CUDA 12.8"
+            printf "\n%s\n" "${delimiter}"
+            export TORCH_COMMAND="pip install torch==2.7.0+cu128 torchvision==0.22.0+cu128 --extra-index-url https://download.pytorch.org/whl/cu128"
+            export TORCH_INDEX_URL="https://download.pytorch.org/whl/cu128"
+        fi
+    fi
+fi
+
 if ! echo "$gpu_info" | grep -q "NVIDIA";
 then
     if echo "$gpu_info" | grep -q "AMD" && [[ -z "${TORCH_COMMAND}" ]]

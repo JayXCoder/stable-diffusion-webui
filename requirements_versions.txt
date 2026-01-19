@@ -31,5 +31,6 @@ torch
 torchdiffeq==0.2.3
 torchsde==0.2.6
 transformers==4.30.2
+tokenizers>=0.13.3,<0.14  # Explicitly pin to avoid Rust compilation issues
 httpx==0.24.1
 pillow-avif-plugin==1.4.3

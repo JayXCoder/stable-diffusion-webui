@@ -26,8 +26,12 @@ diffusionmodules_model_AttnBlock_forward = ldm.modules.diffusionmodules.model.At
 
 # new memory efficient cross attention blocks do not support hypernets and we already
 # have memory efficient cross attention anyway, so this disables SD2.0's memory efficient cross attention
-ldm.modules.attention.MemoryEfficientCrossAttention = ldm.modules.attention.CrossAttention
-ldm.modules.attention.BasicTransformerBlock.ATTENTION_MODES["softmax-xformers"] = ldm.modules.attention.CrossAttention
+# MemoryEfficientCrossAttention may not exist in CompVis repository
+if hasattr(ldm.modules.attention, 'MemoryEfficientCrossAttention'):
+    ldm.modules.attention.MemoryEfficientCrossAttention = ldm.modules.attention.CrossAttention
+# ATTENTION_MODES may not exist in CompVis repository, so check before accessing
+if hasattr(ldm.modules.attention.BasicTransformerBlock, 'ATTENTION_MODES'):
+    ldm.modules.attention.BasicTransformerBlock.ATTENTION_MODES["softmax-xformers"] = ldm.modules.attention.CrossAttention
 
 # silence new console spam from SD2
 ldm.modules.attention.print = shared.ldm_print
@@ -239,7 +243,7 @@ class StableDiffusionModelHijack:
             model_embeddings.token_embedding = EmbeddingsWithFixes(model_embeddings.token_embedding, self)
             m.cond_stage_model = sd_hijack_clip.FrozenCLIPEmbedderWithCustomWords(m.cond_stage_model, self)
 
-        elif type(m.cond_stage_model) == ldm.modules.encoders.modules.FrozenOpenCLIPEmbedder:
+        elif hasattr(ldm.modules.encoders.modules, 'FrozenOpenCLIPEmbedder') and type(m.cond_stage_model) == ldm.modules.encoders.modules.FrozenOpenCLIPEmbedder:
             m.cond_stage_model.model.token_embedding = EmbeddingsWithFixes(m.cond_stage_model.model.token_embedding, self)
             m.cond_stage_model = sd_hijack_open_clip.FrozenOpenCLIPEmbedderWithCustomWords(m.cond_stage_model, self)
 
