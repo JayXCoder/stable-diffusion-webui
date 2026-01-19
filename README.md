@@ -92,8 +92,35 @@ A web interface for Stable Diffusion, implemented using Gradio library.
 - Now with a license!
 - Reorder elements in the UI from settings screen
 - [Segmind Stable Diffusion](https://huggingface.co/segmind/SSD-1B) support
+- **RTX 50 series (Blackwell) GPU support** - Automatic detection and PyTorch 2.7.0+ configuration
+- **Python 3.12 support** - Full support for Python 3.12 with automatic PyTorch version selection
 
 ## Installation and Running
+
+> **Note**: For detailed setup information including RTX 50 series GPU support, Python version requirements, and PyTorch configuration, see [SETUP.md](SETUP.md).
+
+### Automatic Dependency Management
+
+The installation process automatically handles all dependencies:
+
+**pip packages** (installed automatically):
+- PyTorch and torchvision (version selected based on GPU and Python version)
+- All requirements from `requirements_versions.txt`
+- Additional packages as needed
+
+**git repositories** (cloned automatically to `repositories/` directory):
+- `stable-diffusion-webui-assets` - UI assets
+- `stable-diffusion-stability-ai` (or CompVis/stable-diffusion as fallback) - Core SD implementation
+- `generative-models` - SDXL support
+- `k-diffusion` - Sampling methods
+- `BLIP` - Image captioning
+- `taming-transformers` - VQGAN support
+
+**Automatic configuration**:
+- Detects RTX 50 series GPUs and configures PyTorch 2.7.0+ with CUDA 12.8
+- Selects appropriate PyTorch version based on Python version (3.12+ uses PyTorch 2.2.0+, older versions use 2.1.2)
+- Creates and manages Python virtual environment
+- Handles all pip installations and git cloning automatically
 Make sure the required [dependencies](https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/Dependencies) are met and follow the instructions available for:
 - [NVidia](https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/Install-and-Run-on-NVidia-GPUs) (recommended)
 - [AMD](https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/Install-and-Run-on-AMD-GPUs) GPUs.
@@ -111,10 +138,20 @@ Alternatively, use online services (like Google Colab):
 > For more details see [Install-and-Run-on-NVidia-GPUs](https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/Install-and-Run-on-NVidia-GPUs)
 
 ### Automatic Installation on Windows
-1. Install [Python 3.10.6](https://www.python.org/downloads/release/python-3106/) (Newer version of Python does not support torch), checking "Add Python to PATH".
+1. Install Python (recommended: Python 3.10.6 or Python 3.12+):
+   - **Python 3.10.6**: [Download here](https://www.python.org/downloads/release/python-3106/)
+   - **Python 3.12+**: [Download here](https://www.python.org/downloads/) (requires PyTorch 2.2.0+)
+   - **RTX 50 series users**: Python 3.12+ recommended for optimal PyTorch 2.7.0+ support
+   - Make sure to check "Add Python to PATH" during installation
 2. Install [git](https://git-scm.com/download/win).
 3. Download the stable-diffusion-webui repository, for example by running `git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui.git`.
 4. Run `webui-user.bat` from Windows Explorer as normal, non-administrator, user.
+   
+   The script will automatically:
+   - Create a Python virtual environment
+   - Install required pip packages (PyTorch, dependencies)
+   - Clone repository dependencies via git
+   - Configure PyTorch version based on your GPU and Python version
 
 ### Automatic Installation on Linux
 1. Install the dependencies:
@@ -128,24 +165,30 @@ sudo zypper install wget git python3 libtcmalloc4 libglvnd
 # Arch-based:
 sudo pacman -S wget git python3
 ```
-If your system is very new, you need to install python3.11 or python3.10:
+
+2. **Python Version Selection**:
+   - **Supported versions**: Python 3.7, 3.8, 3.9, 3.10, 3.11, 3.12
+   - **RTX 50 series users**: Python 3.12 recommended for PyTorch 2.7.0+ support
+   - **Default**: Python 3.10 or 3.11 works well for most users
+   
+   If your system needs a specific Python version:
 ```bash
-# Ubuntu 24.04
+# Ubuntu/Debian - Install Python 3.12
 sudo add-apt-repository ppa:deadsnakes/ppa
 sudo apt update
-sudo apt install python3.11
+sudo apt install python3.12 python3.12-venv
 
-# Manjaro/Arch
-sudo pacman -S yay
-yay -S python311 # do not confuse with python3.11 package
+# Ubuntu/Debian - Install Python 3.11
+sudo apt install python3.11 python3.11-venv
 
-# Only for 3.11
-# Then set up env variable in launch script
-export python_cmd="python3.11"
-# or in webui-user.sh
-python_cmd="python3.11"
+# Arch/Manjaro - Install Python 3.12
+sudo pacman -S python312
+
+# Set Python version in webui-user.sh (optional)
+python_cmd="python3.12"  # or python3.11, python3.10, etc.
 ```
-2. Navigate to the directory you would like the webui to be installed and execute the following command:
+
+3. Navigate to the directory you would like the webui to be installed and execute the following command:
 ```bash
 wget -q https://raw.githubusercontent.com/AUTOMATIC1111/stable-diffusion-webui/master/webui.sh
 ```
@@ -154,8 +197,18 @@ Or just clone the repo wherever you want:
 git clone https://github.com/AUTOMATIC1111/stable-diffusion-webui
 ```
 
-3. Run `webui.sh`.
-4. Check `webui-user.sh` for options.
+4. Run `webui.sh`.
+   
+   The script will automatically:
+   - Create a Python virtual environment
+   - Detect your GPU (including RTX 50 series) and configure PyTorch accordingly
+   - Install required pip packages via `requirements_versions.txt`
+   - Clone repository dependencies (stable-diffusion, generative-models, k-diffusion, BLIP, taming-transformers) via git
+   - Set up the environment with appropriate PyTorch version
+
+5. Check `webui-user.sh` for additional options.
+
+**RTX 50 Series GPU Users**: The installation will automatically detect your RTX 50 series GPU (compute capability 12.0) and install PyTorch 2.7.0+ with CUDA 12.8. No manual configuration needed!
 ### Installation on Apple Silicon
 
 Find the instructions [here](https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki/Installation-on-Apple-Silicon).
@@ -168,6 +221,17 @@ Here's how to add code to this repo: [Contributing](https://github.com/AUTOMATIC
 The documentation was moved from this README over to the project's [wiki](https://github.com/AUTOMATIC1111/stable-diffusion-webui/wiki).
 
 For the purposes of getting Google and other search engines to crawl the wiki, here's a link to the (not for humans) [crawlable wiki](https://github-wiki-see.page/m/AUTOMATIC1111/stable-diffusion-webui/wiki).
+
+### Setup and Configuration
+
+For detailed information about:
+- **RTX 50 series GPU support** and automatic PyTorch configuration
+- **Python version support** (3.7-3.12) and PyTorch version selection
+- **Repository dependencies** and automatic git cloning
+- **Environment variables** for customization
+- **Troubleshooting** common installation issues
+
+See [SETUP.md](SETUP.md) for comprehensive setup documentation.
 
 ## Credits
 Licenses for borrowed code can be found in `Settings -> Licenses` screen, and also in `html/licenses.html` file.
